@@ -1,0 +1,513 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  admin
+  member
+  guest
+}
+
+enum StatusType {
+  open
+  custom
+  done
+  closed
+}
+
+enum Priority {
+  none
+  low
+  normal
+  high
+  urgent
+}
+
+enum CustomFieldType {
+  text
+  long_text
+  number
+  currency
+  dropdown
+  labels
+  checkbox
+  date
+  email
+  phone
+  url
+  rating
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  name         String
+  passwordHash String
+  locale       String       @default("en")
+  billableRate Int?
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean  @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  memberships   Membership[]
+  focusProfile  FocusProfile?
+  focusSessions FocusSession[]
+  focusNodes    FocusGridNode[]
+  assignments   TaskAssignee[]
+  timesheets    Timesheet[]
+  timeEntries   TimeEntry[]
+  notifications Notification[]
+  activities    Activity[]
+}
+
+model Workspace {
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String       @unique
+  defaultLocale String       @default("en")
+  hourlyRate    Int?
+  currency      String       @default("IRR")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  memberships   Membership[]
+  spaces        Space[]
+  tags          Tag[]
+  dashboards    Dashboard[]
+  goals         Goal[]
+  automations   Automation[]
+}
+
+model Membership {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  workspaceId String    @db.Uuid
+  role        Role      @default(member)
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Space {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  name        String
+  color       String?
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folders     Folder[]
+  lists       TaskList[]
+
+  @@index([workspaceId])
+}
+
+model Folder {
+  id        String     @id @default(uuid()) @db.Uuid
+  spaceId   String     @db.Uuid
+  name      String
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+  space     Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  lists     TaskList[]
+
+  @@index([spaceId])
+}
+
+model TaskList {
+  id        String     @id @default(uuid()) @db.Uuid
+  spaceId   String     @db.Uuid
+  folderId  String?    @db.Uuid
+  name      String
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  space     Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  folder    Folder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  statuses  Status[]
+  tasks     Task[]
+  fields    CustomField[]
+  views     View[]
+
+  @@map("list")
+  @@index([spaceId])
+}
+
+model Status {
+  id       String     @id @default(uuid()) @db.Uuid
+  listId   String     @db.Uuid
+  name     String
+  type     StatusType @default(open)
+  color    String     @default("#6b7280")
+  position Int        @default(0)
+  list     TaskList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+
+  @@index([listId])
+}
+
+model Task {
+  id           String             @id @default(uuid()) @db.Uuid
+  listId       String             @db.Uuid
+  parentTaskId String?            @db.Uuid
+  title        String
+  description  String?
+  statusId     String             @db.Uuid
+  priority     Priority           @default(none)
+  position     Int                @default(0)
+  startDate    DateTime?
+  dueDate      DateTime?
+  estimateMs   Int?
+  completedAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  list         TaskList           @relation(fields: [listId], references: [id], onDelete: Cascade)
+  status       Status             @relation(fields: [statusId], references: [id])
+  parent       Task?              @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks     Task[]             @relation("Subtasks")
+  fieldValues   CustomFieldValue[]
+  focusSessions FocusSession[]
+  assignees     TaskAssignee[]
+  tags          TaskTag[]
+  dependencies  TaskDependency[] @relation("TaskDeps")
+  dependents    TaskDependency[] @relation("TaskDependents")
+  timeEntries   TimeEntry[]
+  targetTasks   TargetTask[]
+
+  @@index([listId])
+  @@index([statusId])
+  @@index([parentTaskId])
+}
+
+model CustomField {
+  id       String          @id @default(uuid()) @db.Uuid
+  listId   String          @db.Uuid
+  name     String
+  type     CustomFieldType
+  config   Json?
+  required Boolean         @default(false)
+  position Int             @default(0)
+  list     TaskList        @relation(fields: [listId], references: [id], onDelete: Cascade)
+  values   CustomFieldValue[]
+
+  @@index([listId])
+}
+
+model CustomFieldValue {
+  id      String      @id @default(uuid()) @db.Uuid
+  taskId  String      @db.Uuid
+  fieldId String      @db.Uuid
+  value   Json
+  task    Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  field   CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, fieldId])
+  @@index([fieldId])
+}
+
+// ---------------------------------------------------------------------------
+// Gamified focus sessions — the CORE time primitive.
+// A focus session is a deep-work block; its outcome drives the reward economy
+// and the architectural grid (buildings on success, ruins on failure) and is
+// the unit that scheduled time / estimates / reports are built on.
+// ---------------------------------------------------------------------------
+
+enum FocusSessionStatus {
+  running
+  paused
+  completed
+  failed
+  cancelled
+}
+
+model FocusProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  focusPoints Int      @default(0)
+  streakCount Int      @default(0)
+  lastResult  String? // 'success' | 'fail'
+  gridWidth   Int      @default(5)
+  gridHeight  Int      @default(5)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FocusSession {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @db.Uuid
+  taskId             String?            @db.Uuid
+  durationMinutes    Int
+  billable           Boolean            @default(false)
+  status             FocusSessionStatus @default(running)
+  startedAt          DateTime           @default(now())
+  endedAt            DateTime?
+  pointsEarned       Int                @default(0)
+  interruptionReason String?
+  createdAt          DateTime           @default(now())
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task               Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  node               FocusGridNode?
+
+  @@index([userId])
+  @@index([taskId])
+}
+
+model FocusGridNode {
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  sessionId       String?       @unique @db.Uuid
+  x               Int
+  y               Int
+  type            String        @default("residential") // residential | landmark | park
+  status          String        @default("blueprint") // blueprint | constructed | ruin
+  durationMinutes Int           @default(25)
+  createdAt       DateTime      @default(now())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         FocusSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, x, y])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 0 completion: assignees, tags, saved views
+// ---------------------------------------------------------------------------
+
+model TaskAssignee {
+  id         String @id @default(uuid()) @db.Uuid
+  taskId     String @db.Uuid
+  userId     String @db.Uuid
+  estimateMs Int?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+}
+
+model Tag {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  name        String
+  color       String     @default("#64748b")
+  createdAt   DateTime   @default(now())
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks       TaskTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model TaskTag {
+  taskId String @db.Uuid
+  tagId  String @db.Uuid
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([tagId])
+}
+
+model View {
+  id        String   @id @default(uuid()) @db.Uuid
+  listId    String   @db.Uuid
+  name      String
+  type      String   @default("list") // list | board
+  config    Json
+  createdBy String?  @db.Uuid
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  list      TaskList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@index([listId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: dependencies + dashboards
+// ---------------------------------------------------------------------------
+
+model TaskDependency {
+  id              String   @id @default(uuid()) @db.Uuid
+  taskId          String   @db.Uuid
+  dependsOnTaskId String   @db.Uuid
+  type            String   @default("blocks") // blocks | blocked_by | waiting_on
+  createdAt       DateTime @default(now())
+  task            Task     @relation("TaskDeps", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn       Task     @relation("TaskDependents", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+}
+
+model Dashboard {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  config      Json // { widgets: [{ id, type, metric }] }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Timesheet {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String    @default("submitted") // draft | submitted | approved | rejected
+  totalMs     Int       @default(0)
+  billableMs  Int       @default(0)
+  note        String?
+  decidedBy   String?   @db.Uuid
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model TimeEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  taskId          String?  @db.Uuid
+  description     String?
+  durationMinutes Int
+  billable        Boolean  @default(false)
+  spentOn         DateTime @default(now())
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task            Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([taskId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: goals & targets (live progress)
+// ---------------------------------------------------------------------------
+
+model Goal {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  folder      String?
+  ownerId     String?   @db.Uuid
+  periodType  String    @default("quarter") // month | quarter | custom
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String    @default("active") // active | done | archived
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  targets     Target[]
+
+  @@index([workspaceId])
+}
+
+model Target {
+  id           String   @id @default(uuid()) @db.Uuid
+  goalId       String   @db.Uuid
+  name         String
+  type         String   @default("number") // number | currency | task_completion | boolean
+  unit         String?
+  startValue   Float    @default(0)
+  targetValue  Float    @default(0)
+  currentValue Float    @default(0)
+  weight       Float    @default(1)
+  createdAt    DateTime @default(now())
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  tasks        TargetTask[]
+
+  @@index([goalId])
+}
+
+model TargetTask {
+  targetId String @db.Uuid
+  taskId   String @db.Uuid
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([targetId, taskId])
+  @@index([taskId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: automations (trigger -> conditions -> actions)
+// ---------------------------------------------------------------------------
+
+model Automation {
+  id          String          @id @default(uuid()) @db.Uuid
+  workspaceId String          @db.Uuid
+  name        String
+  enabled     Boolean         @default(true)
+  trigger     Json // { type, to? }
+  conditions  Json // { op?, items: [{ field, operator, value }] }
+  actions     Json // [{ type, params: {...} }]
+  runAs       String          @default("owner") // owner | actor
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs        AutomationRun[]
+
+  @@index([workspaceId])
+}
+
+model AutomationRun {
+  id           String     @id @default(uuid()) @db.Uuid
+  automationId String     @db.Uuid
+  status       String // success | failed | skipped | looped
+  triggerType  String
+  log          Json // [{ action, ok, detail }]
+  createdAt    DateTime   @default(now())
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: activity log + in-app notifications
+// ---------------------------------------------------------------------------
+
+model Activity {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  actorId     String?  @db.Uuid
+  entityType  String // task | goal | member | timesheet | automation | time
+  entityId    String?
+  action      String
+  meta        Json?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String // assigned | automation | mention
+  title     String
+  body      String?
+  view      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

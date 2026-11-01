@@ -1,0 +1,48 @@
+# Local development services for Karnameh (Phase 0).
+#
+# NOTE ON IMAGE SOURCE
+# Docker Hub (docker.io) is blocked or unreliable in some regions (e.g. Iran).
+# Images therefore default to the ArvanCloud mirror. Override the whole registry
+# by setting DOCKER_MIRROR in the project `.env`:
+#   DOCKER_MIRROR=docker.io        # use Docker Hub directly
+#   DOCKER_MIRROR=docker.arvancloud.ir   # default
+services:
+  db:
+    image: ${DOCKER_MIRROR:-docker.arvancloud.ir}/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: karnameh
+      POSTGRES_PASSWORD: karnameh
+      POSTGRES_DB: karnameh
+    ports:
+      - '5432:5432'
+    volumes:
+      - karnameh-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U karnameh -d karnameh']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: ${DOCKER_MIRROR:-docker.arvancloud.ir}/library/redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - karnameh-redis:/data
+
+  minio:
+    image: ${DOCKER_MIRROR:-docker.arvancloud.ir}/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: karnameh
+      MINIO_ROOT_PASSWORD: karnameh123
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - karnameh-minio:/data
+
+volumes:
+  karnameh-db:
+  karnameh-redis:
+  karnameh-minio:

@@ -1,0 +1,41 @@
+{
+  "name": "karnameh-desktop",
+  "version": "0.7.1",
+  "private": true,
+  "description": "Karnameh offline desktop app (Windows)",
+  "author": "Karnameh",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.karnameh.desktop",
+    "productName": "Karnameh",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "seed/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "renderer/icon.png",
+      "signAndEditExecutable": false,
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "Karnameh-${version}-win-portable.${ext}"
+    }
+  }
+}

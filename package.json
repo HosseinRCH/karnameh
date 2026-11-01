@@ -1,0 +1,34 @@
+{
+  "name": "karnameh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Karnameh — English-default, Persian/RTL-first team & task management platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace @karnameh/shared",
+    "predev:api": "npm run build:shared",
+    "predev:web": "npm run build:shared",
+    "dev:api": "npm run dev --workspace @karnameh/api",
+    "dev:web": "npm run dev --workspace @karnameh/web",
+    "build": "npm run build:shared && npm run build --workspace @karnameh/api && npm run build --workspace @karnameh/web",
+    "typecheck": "npm run build:shared && npm run typecheck --workspace @karnameh/api && npm run typecheck --workspace @karnameh/web",
+    "test": "npm run test --workspace @karnameh/api",
+    "check:rtl": "node scripts/check-rtl.mjs",
+    "quality": "npm run typecheck && npm run test && npm run check:rtl",
+    "db:generate": "npm run db:generate --workspace @karnameh/api",
+    "db:migrate": "npm run db:migrate --workspace @karnameh/api",
+    "db:push": "npm run db:push --workspace @karnameh/api",
+    "db:seed": "npm run db:seed --workspace @karnameh/api",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "icons": "node scripts/generate-icons.mjs",
+    "desktop:install": "npm --prefix desktop install",
+    "desktop:dist": "npm --prefix desktop run dist"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
