@@ -50,6 +50,7 @@ object WearBridge {
         pendingTasks?.cancel()
         pendingTasks = scope.launch {
             delay(500)
+            runCatching { TodayWidget.updateAll(app) }
             publishTasks(app)
         }
     }
