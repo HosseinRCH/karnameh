@@ -15,6 +15,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +104,12 @@ fun App(store: OfflineStore, settings: SettingsStore) {
     val refresh = {
         store.reload()
         version += 1
+    }
+
+    // Data pulled from Google Drive: re-render every screen.
+    val driveChanges by DriveSync.changes.collectAsState()
+    LaunchedEffect(driveChanges) {
+        if (driveChanges > 0) refresh()
     }
 
     KarnamehTheme(darkTheme = darkTheme) {

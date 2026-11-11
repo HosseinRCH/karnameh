@@ -129,6 +129,7 @@ fun MoreScreen(
             }
 
             item { SectionTitle("داده‌ها") }
+            item { DriveSyncCard(store = store) }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(8.dp)) {

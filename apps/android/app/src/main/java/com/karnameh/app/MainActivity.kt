@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 
 class MainActivity : ComponentActivity() {
+    private lateinit var store: OfflineStore
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             // The timer still runs if permission is denied; only the notification is hidden.
@@ -36,7 +38,7 @@ class MainActivity : ComponentActivity() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        val store = OfflineStore(applicationContext)
+        store = OfflineStore(applicationContext)
         val settings = SettingsStore(applicationContext)
         setContent {
             // Persian-first: always lay the UI out right-to-left.
@@ -44,5 +46,15 @@ class MainActivity : ComponentActivity() {
                 App(store, settings)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        DriveSync.syncInBackground(applicationContext, store)
+    }
+
+    override fun onStop() {
+        DriveSync.syncInBackground(applicationContext, store)
+        super.onStop()
     }
 }

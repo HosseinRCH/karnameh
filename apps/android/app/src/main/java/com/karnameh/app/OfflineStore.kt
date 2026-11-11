@@ -1121,6 +1121,9 @@ class OfflineStore(private val context: Context) {
             ?.let { bundle = ensureShape(it) }
     }
 
+    /** The whole bundle as compact JSON. Used by [DriveSync]. */
+    fun snapshotJson(): String = bundle.toString()
+
     // ---- Internals -------------------------------------------------------
 
     private fun objects(key: String): List<JSONObject> {

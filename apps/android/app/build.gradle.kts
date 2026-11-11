@@ -12,8 +12,22 @@ android {
         applicationId = "com.karnameh.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.7.1"
+        versionCode = 10
+        versionName = "0.8.0"
+    }
+
+    signingConfigs {
+        // Fixed debug key shared by local and CI builds, so APKs built anywhere
+        // install over each other without uninstalling (and losing data).
+        getByName("debug") {
+            val shared = rootProject.file("ci-debug.keystore")
+            if (shared.exists()) {
+                storeFile = shared
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
