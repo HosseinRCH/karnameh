@@ -222,6 +222,100 @@ ipcMain.handle('file:delete-attachment', (_event, fileName) => {
   }
 });
 
+// ---------- Google Drive sync (file in the Google Drive for desktop folder) ----------
+function syncConfigFile() {
+  return path.join(dataDir(), 'drive-sync.json');
+}
+
+function readSyncConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(syncConfigFile(), 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSyncConfig(config) {
+  atomicWrite(syncConfigFile(), JSON.stringify(config, null, 2));
+  return config;
+}
+
+/** Best guess for the Google Drive for desktop "My Drive" folder. */
+function guessDriveFolder() {
+  const candidates = [];
+  for (const letter of 'GHIJKLMNOPDEF') {
+    candidates.push(`${letter}:\\My Drive`, `${letter}:\\درایو من`);
+  }
+  const home = app.getPath('home');
+  candidates.push(path.join(home, 'Google Drive', 'My Drive'), path.join(home, 'Google Drive'), path.join(home, 'My Drive'));
+  return candidates.find((dir) => {
+    try {
+      return fs.statSync(dir).isDirectory();
+    } catch {
+      return false;
+    }
+  }) || app.getPath('documents');
+}
+
+ipcMain.handle('sync:config', () => readSyncConfig());
+
+ipcMain.handle('sync:set-config', (_event, patch) => {
+  const current = readSyncConfig();
+  const next = { ...current };
+  if (patch && Number.isInteger(patch.rev)) next.rev = patch.rev;
+  if (patch && typeof patch.hash === 'string') next.hash = patch.hash;
+  if (patch && typeof patch.auto === 'boolean') next.auto = patch.auto;
+  return writeSyncConfig(next);
+});
+
+ipcMain.handle('sync:pick', async (event, mode) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getAllWindows()[0];
+  const defaultDir = guessDriveFolder();
+  let filePath = null;
+  if (mode === 'new') {
+    const result = await dialog.showSaveDialog(win, {
+      title: 'ساخت فایل همگام‌سازی در پوشهٔ Google Drive',
+      defaultPath: path.join(defaultDir, 'karnameh-sync.json'),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    filePath = result.filePath;
+  } else {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'انتخاب فایل karnameh-sync.json در پوشهٔ Google Drive',
+      defaultPath: defaultDir,
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePaths || !result.filePaths.length) return null;
+    filePath = result.filePaths[0];
+  }
+  const auto = readSyncConfig().auto;
+  return writeSyncConfig({ path: filePath, rev: -1, hash: null, auto: auto !== false });
+});
+
+ipcMain.handle('sync:unlink', () => {
+  const auto = readSyncConfig().auto;
+  return writeSyncConfig({ auto: auto !== false });
+});
+
+ipcMain.handle('sync:read', () => {
+  const { path: target } = readSyncConfig();
+  if (!target) throw new Error('فایلی انتخاب نشده');
+  if (!fs.existsSync(target)) return null;
+  return fs.readFileSync(target, 'utf8');
+});
+
+ipcMain.handle('sync:write', (_event, text) => {
+  const { path: target } = readSyncConfig();
+  if (!target) throw new Error('فایلی انتخاب نشده');
+  if (typeof text !== 'string' || !text.includes('karnameh-export')) throw new Error('دادهٔ نامعتبر');
+  // Write in place (no temp + rename) so Google Drive keeps the same file and its ID,
+  // which the Android app is linked to.
+  fs.writeFileSync(target, text, 'utf8');
+  return true;
+});
+
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
   app.quit();

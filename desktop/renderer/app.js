@@ -11,6 +11,9 @@
   let store = null;
   let timer = null;
   let toastTimer = null;
+  let syncAdapter = null;
+  let syncer = null;
+  let syncDebounce = null;
 
   const state = {
     tab: 'home',
@@ -33,6 +36,7 @@
     reportPeriod: 'month',
     theme: 'light',
     dataDir: '',
+    sync: { supported: false, linked: false, label: '', auto: true, busy: false, needsClick: false, status: null, kind: '' },
   };
 
   // ---------- utilities ----------
@@ -120,6 +124,7 @@
   }
 
   function persist(json) {
+    scheduleSync();
     if (window.karnameh && window.karnameh.saveData) {
       window.karnameh.saveData(json);
     } else {
@@ -995,6 +1000,7 @@
             </div>
             <div class="tiny muted" style="margin-top:6px;">برای پاک‌سازی کامل: برنامه را ببندید و پوشهٔ <span dir="ltr">Karnameh-Data</span> را حذف کنید.</div>` : ''}
         </div>
+        ${syncCardHtml()}
         <div class="card">
           <h3 class="card-title">آمار</h3>
           <div class="grid grid-3">
@@ -1752,6 +1758,24 @@
       rerender();
     },
     'export-json'() { void exportJson(); },
+    'sync-new'() { void linkSync('new'); },
+    'sync-existing'() { void linkSync('existing'); },
+    'sync-now'() { void runSync(true); },
+    async 'sync-access'() {
+      if (syncAdapter && (await syncAdapter.requestAccess())) {
+        await refreshSyncState();
+        await runSync(true);
+      } else {
+        toast('دسترسی به فایل داده نشد.');
+      }
+    },
+    async 'sync-unlink'() {
+      if (!syncAdapter || !confirm('اتصال به فایل گوگل درایو قطع شود؟ داده‌های این دستگاه پاک نمی‌شوند.')) return;
+      await syncAdapter.unlink();
+      state.sync.status = null;
+      await refreshSyncState();
+      rerender();
+    },
     'import-json'() { void importJson(); },
     'open-data-folder'() {
       if (window.karnameh && window.karnameh.openDataFolder) {
@@ -1889,6 +1913,10 @@
       case 'search-list': state.searchFilters.listId = value; break;
       case 'automation-toggle':
         store.toggleAutomation(id, el.checked);
+        break;
+      case 'sync-auto':
+        if (syncAdapter) syncAdapter.setAuto(el.checked);
+        state.sync.auto = el.checked;
         break;
       default:
         return;
@@ -2035,6 +2063,112 @@
     }
   }
 
+  // ---------- Google Drive sync ----------
+  async function refreshSyncState() {
+    if (!syncAdapter) return;
+    state.sync.kind = syncAdapter.kind;
+    state.sync.supported = syncAdapter.supported;
+    state.sync.linked = syncAdapter.isLinked();
+    state.sync.label = syncAdapter.label();
+    state.sync.auto = syncAdapter.isAuto();
+    try {
+      state.sync.needsClick = await syncAdapter.needsClick();
+    } catch {
+      state.sync.needsClick = false;
+    }
+  }
+
+  async function runSync(manual) {
+    if (!syncer || !syncAdapter || !syncAdapter.isLinked()) return;
+    if (!manual && !syncAdapter.isAuto()) return;
+    if (state.sync.busy) return;
+    state.sync.busy = true;
+    if (manual || state.tab === 'more') rerender();
+    const result = await syncer.sync();
+    state.sync.busy = false;
+    state.sync.status = result;
+    await refreshSyncState();
+    if (manual || state.tab === 'more') rerender();
+    if (manual) toast(result.message);
+  }
+
+  function scheduleSync() {
+    if (!syncer) return;
+    clearTimeout(syncDebounce);
+    syncDebounce = setTimeout(() => { void runSync(false); }, 15000);
+  }
+
+  function syncCardHtml() {
+    const s = state.sync;
+    const title = '<h3 class="card-title">همگام‌سازی با گوگل درایو</h3>';
+    if (!s.supported) {
+      return `<div class="card">${title}
+        <div class="small muted">این مرورگر به فایل‌های رایانه دسترسی نمی‌دهد. برای همگام‌سازی، نسخهٔ وب را در Chrome یا Edge روی کامپیوتر باز کنید. بقیهٔ برنامه همین‌جا کار می‌کند و داده‌ها در همین مرورگر ذخیره می‌شوند.</div>
+      </div>`;
+    }
+    const where = s.kind === 'desktop'
+      ? 'فایل باید داخل پوشهٔ Google Drive روی این رایانه باشد (برنامهٔ Google Drive for desktop، معمولاً <span dir="ltr">G:\\My Drive</span>).'
+      : 'فایل را از پوشهٔ Google Drive روی این رایانه انتخاب کنید (برنامهٔ Google Drive for desktop، معمولاً <span dir="ltr">G:\\My Drive</span>).';
+    if (!s.linked) {
+      return `<div class="card">${title}
+        <div class="small muted" style="margin-bottom:8px;">همان فایل <span dir="ltr">karnameh-sync.json</span> که گوشی با آن همگام می‌شود را انتخاب کنید. ${where}</div>
+        <div class="row wrap">
+          <button type="button" class="btn primary" data-action="sync-existing">اتصال به فایل موجود</button>
+          <button type="button" class="btn" data-action="sync-new">ساخت فایل جدید</button>
+        </div>
+      </div>`;
+    }
+    const st = s.status;
+    const last = st ? `<div class="tiny ${st.outcome === 'FAILED' ? '' : 'muted'}" style="margin-top:8px;">${esc(st.message)} · ${fmtDateTime(new Date(st.at).toISOString())}</div>` : '';
+    return `<div class="card">${title}
+      <div class="tiny muted">فایل متصل:</div>
+      <div class="tiny" dir="ltr" style="word-break:break-all;">${esc(s.label)}</div>
+      <div class="row wrap" style="margin-top:8px;">
+        ${s.needsClick
+          ? '<button type="button" class="btn primary" data-action="sync-access">تأیید دسترسی و همگام‌سازی</button>'
+          : `<button type="button" class="btn primary" data-action="sync-now" ${s.busy ? 'disabled' : ''}>${s.busy ? 'در حال همگام‌سازی…' : 'همگام‌سازی الان'}</button>`}
+        <button type="button" class="btn sm danger" data-action="sync-unlink">قطع اتصال</button>
+      </div>
+      <label class="row small" style="margin-top:8px;gap:6px;">
+        <input type="checkbox" ${s.auto ? 'checked' : ''} data-change="sync-auto" />
+        همگام‌سازی خودکار (هنگام باز شدن، بعد از هر تغییر و هر چند دقیقه)
+      </label>
+      ${last}
+    </div>`;
+  }
+
+  async function linkSync(mode) {
+    if (!syncAdapter) return;
+    const ok = mode === 'new' ? await syncAdapter.linkNew() : await syncAdapter.linkExisting();
+    await refreshSyncState();
+    rerender();
+    if (ok) await runSync(true);
+  }
+
+  async function initSync() {
+    if (!window.KarnamehSyncAdapters || !window.KarnamehSync) return;
+    try {
+      syncAdapter = await window.KarnamehSyncAdapters.create();
+    } catch {
+      return;
+    }
+    syncer = window.KarnamehSync.createSync({
+      adapter: syncAdapter,
+      store,
+      clientName: syncAdapter.kind === 'desktop' ? 'windows' : 'web',
+      onApplied: () => {
+        ensureSelection();
+        rerender();
+      },
+    });
+    await refreshSyncState();
+    rerender();
+    void runSync(false);
+    setInterval(() => { void runSync(false); }, 3 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { void runSync(false); });
+    window.addEventListener('focus', () => { void runSync(false); });
+  }
+
   // ---------- boot ----------
   async function boot() {
     state.theme = localStorage.getItem(LS.theme) || 'light';
@@ -2077,6 +2211,7 @@
       stopTimer(true);
     }
     render();
+    void initSync();
     setInterval(tickTimer, 500);
     setInterval(() => {
       if (state.tab === 'home') rerender();

@@ -1,0 +1,52 @@
+name: windows-exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/windows-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build portable EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win portable --publish never
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: karnameh-windows
+          path: desktop/release/*.exe
+
+      - name: Publish "windows-latest" release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXE=$(ls release/*.exe | head -n 1)
+          cp "$EXE" Karnameh.exe
+          gh release delete windows-latest --yes --cleanup-tag || true
+          gh release create windows-latest Karnameh.exe \
+            --title "Karnameh Windows (latest)" \
+            --notes "Built from ${GITHUB_SHA::7}. Portable EXE: download and run, no install needed." \
+            --target "$GITHUB_SHA"
