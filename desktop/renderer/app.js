@@ -2103,12 +2103,18 @@
     const title = '<h3 class="card-title">همگام‌سازی با گوگل درایو</h3>';
     if (!s.supported) {
       return `<div class="card">${title}
-        <div class="small muted">این مرورگر به فایل‌های رایانه دسترسی نمی‌دهد. برای همگام‌سازی، نسخهٔ وب را در Chrome یا Edge روی کامپیوتر باز کنید. بقیهٔ برنامه همین‌جا کار می‌کند و داده‌ها در همین مرورگر ذخیره می‌شوند.</div>
+        <div class="small muted">همگام‌سازی با گوگل درایو در این نسخه هنوز تنظیم نشده. بقیهٔ برنامه همین‌جا کار می‌کند و داده‌ها در همین مرورگر ذخیره می‌شوند.</div>
       </div>`;
     }
-    const where = s.kind === 'desktop'
-      ? 'فایل باید داخل پوشهٔ Google Drive روی این رایانه باشد (برنامهٔ Google Drive for desktop، معمولاً <span dir="ltr">G:\\My Drive</span>).'
-      : 'فایل را از پوشهٔ Google Drive روی این رایانه انتخاب کنید (برنامهٔ Google Drive for desktop، معمولاً <span dir="ltr">G:\\My Drive</span>).';
+    if (!s.linked && s.kind === 'web') {
+      return `<div class="card">${title}
+        <div class="small muted" style="margin-bottom:8px;">با حساب گوگل وارد شوید تا برنامه از پوشهٔ <b>Karnameh</b> در گوگل درایو (فایل <span dir="ltr">karnameh-sync.json</span>، همان فایل گوشی و ویندوز) بخواند و در آن بنویسد. اگر پوشه یا فایل نباشد ساخته می‌شود.</div>
+        <div class="row wrap">
+          <button type="button" class="btn primary" data-action="sync-existing">ورود با گوگل و اتصال</button>
+        </div>
+      </div>`;
+    }
+    const where = 'فایل باید داخل پوشهٔ <b>Karnameh</b> در Google Drive روی این رایانه باشد (برنامهٔ Google Drive for desktop، معمولاً <span dir="ltr">G:\\My Drive\\Karnameh</span>).';
     if (!s.linked) {
       return `<div class="card">${title}
         <div class="small muted" style="margin-bottom:8px;">همان فایل <span dir="ltr">karnameh-sync.json</span> که گوشی با آن همگام می‌شود را انتخاب کنید. ${where}</div>
@@ -2125,7 +2131,7 @@
       <div class="tiny" dir="ltr" style="word-break:break-all;">${esc(s.label)}</div>
       <div class="row wrap" style="margin-top:8px;">
         ${s.needsClick
-          ? '<button type="button" class="btn primary" data-action="sync-access">تأیید دسترسی و همگام‌سازی</button>'
+          ? `<button type="button" class="btn primary" data-action="sync-access">${s.kind === 'web' ? 'ورود دوباره با گوگل و همگام‌سازی' : 'تأیید دسترسی و همگام‌سازی'}</button>`
           : `<button type="button" class="btn primary" data-action="sync-now" ${s.busy ? 'disabled' : ''}>${s.busy ? 'در حال همگام‌سازی…' : 'همگام‌سازی الان'}</button>`}
         <button type="button" class="btn sm danger" data-action="sync-unlink">قطع اتصال</button>
       </div>

@@ -1,5 +1,5 @@
 /* Karnameh web: network first, cache as fallback so the app opens offline. */
-const CACHE = 'karnameh-web-v1';
+const CACHE = 'karnameh-web-v2';
 self.addEventListener('install', (event) => { self.skipWaiting(); });
 self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', (event) => {

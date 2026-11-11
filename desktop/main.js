@@ -270,7 +270,16 @@ ipcMain.handle('sync:set-config', (_event, patch) => {
 
 ipcMain.handle('sync:pick', async (event, mode) => {
   const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getAllWindows()[0];
-  const defaultDir = guessDriveFolder();
+  const driveDir = guessDriveFolder();
+  // Prefer (and create) the shared "Karnameh" folder inside My Drive.
+  let defaultDir = driveDir;
+  const karnamehDir = path.join(driveDir, 'Karnameh');
+  try {
+    fs.mkdirSync(karnamehDir, { recursive: true });
+    defaultDir = karnamehDir;
+  } catch {
+    /* keep driveDir */
+  }
   let filePath = null;
   if (mode === 'new') {
     const result = await dialog.showSaveDialog(win, {
