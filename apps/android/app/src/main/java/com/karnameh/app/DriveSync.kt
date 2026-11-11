@@ -38,7 +38,7 @@ import java.time.Instant
  * Limitation: a record deleted on one side while the other side also changed comes back.
  */
 object DriveSync {
-    enum class Outcome { NOT_LINKED, UP_TO_DATE, PUSHED, PULLED, MERGED, FAILED }
+    enum class Outcome { NOT_LINKED, NEEDS_SIGN_IN, UP_TO_DATE, PUSHED, PULLED, MERGED, FAILED }
 
     data class Status(
         val outcome: Outcome,
@@ -51,6 +51,8 @@ object DriveSync {
     private const val KEY_REV = "last_rev"
     private const val KEY_HASH = "last_hash"
     private const val KEY_AUTO = "auto"
+    private const val KEY_FILE_ID = "file_id"
+    private const val KEY_EMAIL = "email"
     private const val RW_FLAGS =
         Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
 
@@ -70,6 +72,28 @@ object DriveSync {
     fun linkedUri(context: Context): Uri? =
         prefs(context).getString(KEY_URI, null)?.let { Uri.parse(it) }
 
+    /** Drive API mode: id of My Drive/Karnameh/karnameh-sync.json. */
+    fun linkedFileId(context: Context): String? = prefs(context).getString(KEY_FILE_ID, null)
+
+    fun linkedEmail(context: Context): String? = prefs(context).getString(KEY_EMAIL, null)
+
+    fun isLinked(context: Context): Boolean = linkedFileId(context) != null || linkedUri(context) != null
+
+    /** Link through Google sign-in and the Drive API (shared Karnameh folder). */
+    fun linkApi(context: Context, fileId: String, email: String?) {
+        linkedUri(context)?.let { uri ->
+            runCatching { context.contentResolver.releasePersistableUriPermission(uri, RW_FLAGS) }
+        }
+        prefs(context).edit()
+            .remove(KEY_URI)
+            .putString(KEY_FILE_ID, fileId)
+            .putString(KEY_EMAIL, email)
+            .putInt(KEY_REV, -1)
+            .remove(KEY_HASH)
+            .apply()
+        _status.value = null
+    }
+
     fun isAuto(context: Context): Boolean = prefs(context).getBoolean(KEY_AUTO, true)
 
     fun setAuto(context: Context, value: Boolean) {
@@ -81,6 +105,8 @@ object DriveSync {
         runCatching { context.contentResolver.takePersistableUriPermission(uri, RW_FLAGS) }
         prefs(context).edit()
             .putString(KEY_URI, uri.toString())
+            .remove(KEY_FILE_ID)
+            .remove(KEY_EMAIL)
             .putInt(KEY_REV, -1)
             .remove(KEY_HASH)
             .apply()
@@ -99,13 +125,16 @@ object DriveSync {
     /** Fire-and-forget sync used when the app opens or goes to the background. */
     fun syncInBackground(context: Context, store: OfflineStore) {
         val app = context.applicationContext
-        if (!isAuto(app) || linkedUri(app) == null) return
+        if (!isAuto(app) || !isLinked(app)) return
         backgroundScope.launch { sync(app, store) }
     }
 
     suspend fun sync(context: Context, store: OfflineStore): Status = withContext(Dispatchers.IO) {
         mutex.withLock {
             val result = runCatching { syncLocked(context, store) }.getOrElse {
+                if (it is DriveApi.NeedsConsent) {
+                    return@withLock Status(Outcome.NEEDS_SIGN_IN, it.message ?: "").also { st -> _status.value = st }
+                }
                 Status(
                     Outcome.FAILED,
                     "خطا در همگام‌سازی: ${it.message ?: it.javaClass.simpleName}",
@@ -118,8 +147,51 @@ object DriveSync {
 
     // ---- Core ------------------------------------------------------------
 
-    private fun syncLocked(context: Context, store: OfflineStore): Status {
-        val uri = linkedUri(context)
+    /** Where the Drive file is read from and written to. */
+    private interface Remote {
+        fun read(): String?
+        fun write(text: String)
+    }
+
+    private class SafRemote(val context: Context, val uri: Uri) : Remote {
+        override fun read(): String? = context.contentResolver.openInputStream(uri)
+            ?.bufferedReader(Charsets.UTF_8)
+            ?.use { it.readText() }
+
+        override fun write(text: String) {
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            val resolver = context.contentResolver
+            val stream = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull()
+                ?: resolver.openOutputStream(uri, "w")
+                ?: error("نوشتن در فایل گوگل درایو ممکن نشد")
+            stream.use { it.write(bytes) }
+        }
+    }
+
+    private class ApiRemote(val context: Context, val token: String, var fileId: String) : Remote {
+        override fun read(): String? = try {
+            DriveApi.read(token, fileId)
+        } catch (e: DriveApi.HttpError) {
+            if (e.code != 404) throw e
+            // The file was removed or moved: find (or recreate) it in the Karnameh folder.
+            val (id, email) = DriveApi.findOrCreate(token)
+            fileId = id
+            prefs(context).edit().putString(KEY_FILE_ID, id).putString(KEY_EMAIL, email).apply()
+            DriveApi.read(token, id)
+        }
+
+        override fun write(text: String) = DriveApi.write(token, fileId, text)
+    }
+
+    private suspend fun remoteFor(context: Context): Remote? {
+        linkedFileId(context)?.let { id ->
+            return ApiRemote(context, DriveApi.token(context), id)
+        }
+        return linkedUri(context)?.let { SafRemote(context, it) }
+    }
+
+    private suspend fun syncLocked(context: Context, store: OfflineStore): Status {
+        val uri = remoteFor(context)
             ?: return Status(Outcome.NOT_LINKED, "هنوز فایلی در گوگل درایو انتخاب نشده.")
         val p = prefs(context)
         val lastRev = p.getInt(KEY_REV, -1)
@@ -130,7 +202,7 @@ object DriveSync {
         val localHash = dataHash(local)
         val localDirty = localHash != lastHash
 
-        val remote = readRemote(context, uri)
+        val remote = uri.read()
             ?.takeIf { it.isNotBlank() }
             ?.let { runCatching { JSONObject(it) }.getOrNull() }
             ?.takeIf {
@@ -175,7 +247,7 @@ object DriveSync {
      */
     private fun applyLocally(
         context: Context,
-        uri: Uri,
+        uri: Remote,
         store: OfflineStore,
         data: JSONObject,
         remoteRev: Int,
@@ -201,12 +273,7 @@ object DriveSync {
 
     // ---- Drive file I/O --------------------------------------------------
 
-    private fun readRemote(context: Context, uri: Uri): String? =
-        context.contentResolver.openInputStream(uri)
-            ?.bufferedReader(Charsets.UTF_8)
-            ?.use { it.readText() }
-
-    private fun push(context: Context, uri: Uri, data: JSONObject, rev: Int) {
+    private fun push(context: Context, uri: Remote, data: JSONObject, rev: Int) {
         val out = JSONObject(data.toString())
         out.put(
             "sync",
@@ -215,12 +282,7 @@ object DriveSync {
                 .put("updatedBy", "android")
                 .put("updatedAt", Instant.now().toString()),
         )
-        val bytes = out.toString(2).toByteArray(Charsets.UTF_8)
-        val resolver = context.contentResolver
-        val stream = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull()
-            ?: resolver.openOutputStream(uri, "w")
-            ?: error("نوشتن در فایل گوگل درایو ممکن نشد")
-        stream.use { it.write(bytes) }
+        uri.write(out.toString(2))
     }
 
     // ---- Merge -----------------------------------------------------------
