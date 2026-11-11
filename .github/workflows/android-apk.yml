@@ -1,0 +1,56 @@
+name: android-apk
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: karnameh-apk
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Publish "android-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
+          cp "$APK" karnameh.apk
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest karnameh.apk \
+            --title "Karnameh Android (latest)" \
+            --notes "Built from ${GITHUB_SHA::7}. Download karnameh.apk on the phone and install." \
+            --target "$GITHUB_SHA"
