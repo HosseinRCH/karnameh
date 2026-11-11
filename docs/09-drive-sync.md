@@ -49,3 +49,11 @@ Drive. A record deleted on one side while the other side also changed comes back
 - The Google Drive app may serve a cached copy for a short while after a remote edit;
   *Sync now* a minute later picks it up.
 - Attachments' binary files are not synced, only their metadata.
+
+## Shared Drive folder `Karnameh` (2026-11-11)
+
+All clients use one file: **My Drive/Karnameh/karnameh-sync.json**.
+
+- **Web**: Sign in with Google (Google Identity Services token client, scope `drive`). The app reads and writes the file through Drive API v3. This works in any browser, phones included. The OAuth Web Client ID is in `web/config.js`; its authorized JavaScript origin is `https://hosseinrch.github.io`, and the app is in Testing mode with the owner added as a test user. If the folder or file is missing, the app creates it. An older file in the root of My Drive is moved into the folder and keeps its id. Access lasts about one hour per sign-in, so after that the card shows a button to sign in again.
+- **Windows**: The file picker opens in `My Drive\Karnameh` (the folder is created if needed).
+- **Android**: Pick the same file inside the Karnameh folder. The existing file was moved there and kept the same id.
