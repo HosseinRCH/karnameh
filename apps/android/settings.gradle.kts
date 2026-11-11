@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "KarnamehAndroid"
 include(":app")
+include(":wear")

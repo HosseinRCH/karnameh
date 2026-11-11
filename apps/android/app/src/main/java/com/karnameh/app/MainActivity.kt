@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         DriveSync.syncInBackground(applicationContext, store)
+        WearBridge.publishAll(applicationContext)
     }
 
     override fun onStop() {

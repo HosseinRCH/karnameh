@@ -133,6 +133,7 @@ object FocusTimer {
             .edit()
             .putString("state", json.toString())
             .apply()
+        WearBridge.publishTimerSoon(context, state)
     }
 
     private fun clear(context: Context) {
@@ -140,6 +141,7 @@ object FocusTimer {
             .edit()
             .remove("state")
             .apply()
+        WearBridge.publishTimerSoon(context, null)
     }
 
     private fun load(context: Context): FocusTimerState? {

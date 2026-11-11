@@ -43,7 +43,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: karnameh-apk
-          path: apps/android/app/build/outputs/apk/debug/*.apk
+          path: |
+            apps/android/app/build/outputs/apk/debug/*.apk
+            apps/android/wear/build/outputs/apk/debug/*.apk
 
       - name: Publish "android-latest" release
         env:
@@ -51,8 +53,10 @@ jobs:
         run: |
           APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
           cp "$APK" karnameh.apk
+          WEAR=$(ls wear/build/outputs/apk/debug/*.apk | head -n 1)
+          cp "$WEAR" karnameh-wear.apk
           gh release delete android-latest --yes --cleanup-tag || true
-          gh release create android-latest karnameh.apk \
+          gh release create android-latest karnameh.apk karnameh-wear.apk \
             --title "Karnameh Android (latest)" \
-            --notes "Built from ${GITHUB_SHA::7}. Download karnameh.apk on the phone and install." \
+            --notes "Built from ${GITHUB_SHA::7}. karnameh.apk: phone. karnameh-wear.apk: Wear OS watch (install over ADB)." \
             --target "$GITHUB_SHA"

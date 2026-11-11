@@ -107,6 +107,10 @@ fun App(store: OfflineStore, settings: SettingsStore) {
     }
 
     // Data pulled from Google Drive: re-render every screen.
+    val watchChanges by WearBridge.changes.collectAsState()
+    LaunchedEffect(watchChanges) {
+        if (watchChanges > 0) refresh()
+    }
     val driveChanges by DriveSync.changes.collectAsState()
     LaunchedEffect(driveChanges) {
         if (driveChanges > 0) refresh()

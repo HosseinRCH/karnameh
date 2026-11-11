@@ -12,8 +12,8 @@ android {
         applicationId = "com.karnameh.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.8.0"
+        versionCode = 11
+        versionName = "0.9.0"
     }
 
     signingConfigs {
@@ -71,6 +71,8 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

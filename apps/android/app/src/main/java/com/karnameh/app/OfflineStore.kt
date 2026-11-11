@@ -1121,6 +1121,54 @@ class OfflineStore(private val context: Context) {
             ?.let { bundle = ensureShape(it) }
     }
 
+    /** Marks a task done (first done/closed status of its list) or reopens it. Used by the watch. */
+    fun toggleDone(taskId: String) {
+        val task = findTask(taskId) ?: return
+        val listId = task.optString("listId")
+        val statuses = statuses(listId)
+        val target = if (isDoneStatus(task.optString("statusId"))) {
+            statuses.firstOrNull { it.type != "done" && it.type != "closed" }
+        } else {
+            statuses.firstOrNull { it.type == "done" } ?: statuses.firstOrNull { it.type == "closed" }
+        } ?: return
+        setStatus(taskId, target.id)
+    }
+
+    /** Today's tasks for the watch: overdue, due or started today, and finished today. */
+    fun watchJson(): String {
+        val today = LocalDate.now().toString()
+        val rows = allTasks().filter { row ->
+            val due = row.dueDate
+            val start = row.startDate
+            val finishedToday = row.done && (row.completedAt?.let { completedLocalDate(it) } == today)
+            val active = !row.done && ((due != null && due <= today) || (start != null && start <= today))
+            finishedToday || active
+        }.sortedWith(compareBy<TaskRowDto>({ it.done }, { it.dueDate ?: "9999" }, { it.dueTime ?: "99" }))
+            .take(40)
+        val tasks = JSONArray()
+        for (row in rows) {
+            tasks.put(
+                JSONObject()
+                    .put("id", row.id)
+                    .put("title", row.title)
+                    .put("done", row.done)
+                    .put("priority", row.priority)
+                    .put("dueDate", row.dueDate ?: JSONObject.NULL)
+                    .put("dueTime", row.dueTime ?: JSONObject.NULL)
+                    .put("list", listName(row.listId)),
+            )
+        }
+        return JSONObject()
+            .put("date", today)
+            .put("focusMinutes", todayFocusMinutes())
+            .put("tasks", tasks)
+            .toString()
+    }
+
+    private fun completedLocalDate(value: String): String? = runCatching {
+        Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+    }.getOrElse { value.take(10) }
+
     /** The whole bundle as compact JSON. Used by [DriveSync]. */
     fun snapshotJson(): String = bundle.toString()
 
@@ -1423,6 +1471,7 @@ class OfflineStore(private val context: Context) {
     }
 
     private fun write(data: JSONObject = bundle) {
+        WearBridge.publishTasksSoon(context)
         val text = data.toString(2)
         val temp = File(file.parentFile, "karnameh.json.tmp")
         temp.writeText(text, Charsets.UTF_8)
