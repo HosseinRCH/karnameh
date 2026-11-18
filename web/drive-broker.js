@@ -76,7 +76,7 @@
     if (!client) {
       client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: "https://www.googleapis.com/auth/drive.file",
+        scope: "https://www.googleapis.com/auth/drive",
         callback: function (response) {
           if (response && response.access_token) {
             finish(response.access_token, response.expires_in);
