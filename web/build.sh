@@ -19,5 +19,9 @@ s = s.replace("script-src 'self';", "script-src 'self' https://accounts.google.c
 s = s.replace('<script src="sync-adapters.js', '<script src="config.js?v=1"></script>\n    <script src="sync-adapters.js')
 open(p, 'w', encoding='utf-8').write(s)
 PY
+# Paca offline web app (source: HosseinRCH/paca offline/www)
+mkdir -p _site/paca
+cp -r paca/. _site/paca/
+rm -f _site/paca/README.md
 touch _site/.nojekyll
 echo "built _site"

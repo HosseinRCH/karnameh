@@ -6,6 +6,7 @@ on:
     paths:
       - 'desktop/renderer/**'
       - 'web/**'
+      - 'paca/**'
       - '.github/workflows/web-pages.yml'
   workflow_dispatch:
 
