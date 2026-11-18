@@ -6,6 +6,7 @@ rm -rf _site
 mkdir -p _site
 cp -r desktop/renderer/. _site/
 cp web/manifest.webmanifest web/sw.js web/web-boot.js web/config.js _site/
+cp web/drive-broker.html web/drive-broker.js _site/
 python3 - <<'PY'
 p = '_site/index.html'
 s = open(p, encoding='utf-8').read()
