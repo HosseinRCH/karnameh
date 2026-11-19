@@ -17,6 +17,10 @@
   var button = document.getElementById("go");
   var clientId = window.KARNAMEH_GOOGLE_CLIENT_ID || "";
   var client = null;
+  // Android app mode: ?app=android&state=... (opened in the phone's browser,
+  // no opener). The token goes back to the app through its own link scheme.
+  var appMode = params.get("app") === "android";
+  var backUrl = "";
 
   function fail(text) {
     msg.textContent = text;
@@ -25,6 +29,19 @@
   }
 
   function finish(token, expiresIn) {
+    if (appMode) {
+      var back =
+        "pacakarnameh://drive-token?token=" + encodeURIComponent(token) +
+        "&expires=" + encodeURIComponent(String(Number(expiresIn) || 3600)) +
+        "&state=" + encodeURIComponent(state);
+      msg.className = "";
+      msg.textContent = "اتصال برقرار شد. برای ادامه، دکمهٔ زیر را بزنید.";
+      button.textContent = "بازگشت به پاکا";
+      button.disabled = false;
+      backUrl = back;
+      window.location.href = back;
+      return;
+    }
     try {
       window.opener.postMessage(
         {
@@ -47,11 +64,11 @@
     }, 900);
   }
 
-  if (!window.opener) {
+  if (!appMode && !window.opener) {
     fail("این صفحه را از داخل پاکا باز کنید.");
     return;
   }
-  if (!origin || !/^https?:\/\//i.test(origin)) {
+  if (!appMode && (!origin || !/^https?:\/\//i.test(origin))) {
     fail("آدرس بازگشت پاکا نامعتبر است.");
     return;
   }
@@ -61,6 +78,10 @@
   }
 
   button.addEventListener("click", function () {
+    if (backUrl) {
+      window.location.href = backUrl;
+      return;
+    }
     if (
       !window.google ||
       !window.google.accounts ||
